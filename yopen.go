@@ -106,8 +106,7 @@ func NewReader(filename string) (yr *Reader, err error) {
 			return
 		}
 
-	}
-	if in, err = os.Open(filename); err != nil {
+	} else if in, err = os.Open(filename); err != nil {
 		if os.IsNotExist(err) && !strings.HasSuffix(filename, ".gz") {
 			// try to open the .gz version
 			in, err = os.Open(filename + ".gz")
