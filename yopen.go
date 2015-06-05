@@ -4,6 +4,7 @@ import (
 	"compress/gzip"
 	"io"
 	"os"
+	"os/exec"
 	"path"
 	"strings"
 )
@@ -13,6 +14,7 @@ type Reader struct {
 	io.Reader              // exposed to external world. See http://bit.ly/1KPttpo
 	fp        io.Reader    // used to store original source file or stream
 	gz        *gzip.Reader // used to store gz.Reader reference
+	cmd       *exec.Cmd    // used for invoking "lzop -dc"
 }
 
 // Close the associated files.
@@ -32,6 +34,13 @@ func (r *Reader) Close() (err error) {
 			return
 		}
 	}
+
+	if r.cmd != nil {
+		if err = r.cmd.Wait(); err != nil {
+			return
+		}
+	}
+
 	return
 }
 
@@ -82,10 +91,22 @@ func (w *Writer) Close() (err error) {
 // a concurrent process gzip-ing files).
 func NewReader(filename string) (yr *Reader, err error) {
 
-	var in *os.File
+	var in io.ReadCloser
 	gzFallback := false
 	var gz *gzip.Reader
+	var cmd *exec.Cmd
 
+	if strings.HasSuffix(filename, ".lzo") {
+		cmd = exec.Command("lzop", "-dc", filename)
+		in, err = cmd.StdoutPipe()
+		if err != nil {
+			return
+		}
+		if err = cmd.Start(); err != nil {
+			return
+		}
+
+	}
 	if in, err = os.Open(filename); err != nil {
 		if os.IsNotExist(err) && !strings.HasSuffix(filename, ".gz") {
 			// try to open the .gz version
@@ -102,9 +123,9 @@ func NewReader(filename string) (yr *Reader, err error) {
 		gz, err = gzip.NewReader(in)
 	}
 	if gz != nil {
-		yr = &Reader{gz, in, gz}
+		yr = &Reader{gz, in, gz, cmd}
 	} else {
-		yr = &Reader{in, in, gz}
+		yr = &Reader{in, in, gz, cmd}
 	}
 	return
 }
